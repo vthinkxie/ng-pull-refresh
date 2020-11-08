@@ -1,27 +1,61 @@
-# NgPlusDemo
+# NG Pull Refresh
 
-This project was generated with [Angular CLI](https://github.com/angular/angular-cli) version 10.2.0.
+Pull Refresh / Click Refresh / Auto Refresh With 60 line code
 
-## Development server
+```typescript
 
-Run `ng serve` for a dev server. Navigate to `http://localhost:4200/`. The app will automatically reload if you change any of the source files.
+import { Component } from '@angular/core';
+import { EMPTY, fromEvent, interval, merge, Subject } from 'rxjs';
+import { debounceTime, filter, map, repeat, startWith, switchMap, take, takeUntil } from 'rxjs/operators';
+import { HttpClient } from '@angular/common/http';
 
-## Code scaffolding
+interface User {
+  address: string;
+  balance: number;
+  created: string;
+  email: string;
+  first: string;
+  last: string;
+}
+@Component({
+  selector: 'app-root',
+  template: `
+    <button (click)="click$.next()">Refresh</button>
+    <input id="auto" type="checkbox" ngModel (ngModelChange)="change$.next($event)" />
+    <label for="auto">Enable Auto Refresh</label>
+    <section *ngFor="let user of view$ | async">
+      <hr>
+      <div>Name: {{ user.first }} {{ user.last }}</div>
+      <div>Address: {{ user.address }}</div>
+      <div>Balance: {{ user.balance }}</div>
+      <div>Email: {{ user.email }}</div>
+    </section>
+  `
+})
+export class AppComponent {
+  click$ = new Subject<void>();
+  change$ = new Subject<boolean>();
+  touchstart$ = fromEvent<TouchEvent>(document, 'touchstart');
+  touchend$ = fromEvent<TouchEvent>(document, 'touchend');
+  touchmove$ = fromEvent<TouchEvent>(document, 'touchmove');
+  interval$ = interval(5000);
+  fetch$ = this.httpClient.get<User[]>('https://randomapi.azurewebsites.net/api/users');
+  clickRefresh$ = this.click$.pipe(debounceTime(300));
+  touchRefresh$ = this.touchstart$.pipe(
+    switchMap(touchstart =>
+      this.touchmove$.pipe(
+        map(touchmove => touchmove.touches[0].pageY - touchstart.touches[0].pageY),
+        takeUntil(this.touchend$)
+      )
+    ),
+    filter(position => position >= 300),
+    take(1),
+    repeat()
+  );
+  autoRefresh$ = this.change$.pipe(switchMap(enabled => (enabled ? this.interval$ : EMPTY)));
+  refresh$ = merge(this.clickRefresh$, this.autoRefresh$, this.touchRefresh$).pipe(startWith(true));
+  view$ = this.refresh$.pipe(switchMap(() => this.fetch$));
+  constructor(private httpClient: HttpClient) {}
+}
 
-Run `ng generate component component-name` to generate a new component. You can also use `ng generate directive|pipe|service|class|guard|interface|enum|module`.
-
-## Build
-
-Run `ng build` to build the project. The build artifacts will be stored in the `dist/` directory. Use the `--prod` flag for a production build.
-
-## Running unit tests
-
-Run `ng test` to execute the unit tests via [Karma](https://karma-runner.github.io).
-
-## Running end-to-end tests
-
-Run `ng e2e` to execute the end-to-end tests via [Protractor](http://www.protractortest.org/).
-
-## Further help
-
-To get more help on the Angular CLI use `ng help` or go check out the [Angular CLI Overview and Command Reference](https://angular.io/cli) page.
+```
